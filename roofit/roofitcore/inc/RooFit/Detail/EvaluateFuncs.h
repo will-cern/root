@@ -109,6 +109,44 @@ inline double interpolate6thDegree(double x, double low, double high, double nom
    return x * (S + t * A * (15 + t * t * (-10 + t * t * 3)));
 }
 
+inline double interpolate6thDegreeExp(double x, double low, double high, double nominal, double boundary)
+{
+    if (x >= boundary) {
+       return std::pow(high / nominal, +x);
+    } else if (x <= -boundary) {
+       return std::pow(low / nominal, -x);
+    }
+
+    double x0 = boundary;
+
+    double pow_up       =  std::pow(high/nominal, x0);
+    double pow_down     =  std::pow(low/nominal, x0);
+    double logHi        =  std::log(high);
+    double logLo        =  std::log(low);
+    double pow_up_log   = high <= 0.0 ? 0.0 : pow_up      * logHi;
+    double pow_down_log = low <= 0.0 ? 0.0 : -pow_down    * logLo;
+    double pow_up_log2  = high <= 0.0 ? 0.0 : pow_up_log  * logHi;
+    double pow_down_log2= low <= 0.0 ? 0.0 : -pow_down_log* logLo;
+
+    double S0 = (pow_up+pow_down)/2;
+    double A0 = (pow_up-pow_down)/2;
+    double S1 = (pow_up_log+pow_down_log)/2;
+    double A1 = (pow_up_log-pow_down_log)/2;
+    double S2 = (pow_up_log2+pow_down_log2)/2;
+    double A2 = (pow_up_log2-pow_down_log2)/2;
+
+    //fcns+der+2nd_der are eq at bd
+    double a = 1./(8*x0)        *(      15*A0 -  7*x0*S1 + x0*x0*A2);
+    double b = 1./(8*x0*x0)     *(-24 + 24*S0 -  9*x0*A1 + x0*x0*S2);
+    double c = 1./(4*pow(x0, 3))*(    -  5*A0 +  5*x0*S1 - x0*x0*A2);
+    double d = 1./(4*pow(x0, 4))*( 12 - 12*S0 +  7*x0*A1 - x0*x0*S2);
+    double e = 1./(8*pow(x0, 5))*(    +  3*A0 -  3*x0*S1 + x0*x0*A2);
+    double f = 1./(8*pow(x0, 6))*( -8 +  8*S0 -  5*x0*A1 + x0*x0*S2);
+
+    x /= boundary;
+    return (1. + x * (a + x * ( b + x * ( c + x * ( d + x * ( e + x * f ) ) ) ) ));
+}
+
 inline double flexibleInterp(unsigned int code, double low, double high, double boundary, double nominal,
                              double paramVal, double total)
 {
@@ -148,7 +186,10 @@ inline double flexibleInterp(unsigned int code, double low, double high, double 
       } else {
          return total + a * std::pow(paramVal, 2) + b * paramVal + c;
       }
-   } else if (code == 4) {
+   } else if (code ==4) {
+      return total*interpolate6thDegreeExp(paramVal,low,high,nominal,boundary);
+   } else if (code == 5) {
+      // new 6th order polynomial interpolation of log(y), which is then exponentiated
       double x = paramVal;
       if (x >= boundary) {
          return total * std::pow(high / nominal, +paramVal);
@@ -186,6 +227,9 @@ piecewiseInterpolation(unsigned int code, double low, double high, double nomina
          return sum + val - nominal;
       }
       // WVE ****************************************************************
+   } else if(code==5) {
+      // FlexibleInterpVar-style interpolation
+      return sum*interpolate6thDegreeExp(param,low,high,nominal,1.0);
    } else {
 
       double x0 = 1.0; // boundary;
